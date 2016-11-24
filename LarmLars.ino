@@ -1,9 +1,10 @@
 
+#include <TimeLib.h>
 #include <EEPROM.h>
 #include <limits.h>
 #include <RC5.h>
 
-using namespace std;
+// using namespace std;
 
 #define TIMEOUT_STEPS  20       // Number of seconds for each step (1-9) 0 no timeout
 
@@ -14,6 +15,7 @@ int GREEN_LED_PIN = 6;
 int RED_LED_PIN = 7;
 int INTERRUPT_PIN = 3;
 int RELAY_PIN = 4;
+int INTERNAL_LED_PIN = 13;
 unsigned long t0;
 
 RC5 rc5(5);
@@ -24,8 +26,14 @@ int maxTimeAdrEEPROM = 0;
 boolean powerOn = false;
 boolean flashRedLED = false;
 
-unsigned long currentTime = 0;
-unsigned long oldCurrentTime = 0;
+boolean green_led_status = false;
+boolean red_led_status = false;
+boolean relay_status = false;
+
+int Second = 0;
+int oldSecond = 0;
+// unsigned long currentTime = 0;
+// unsigned long oldCurrentTime = 0;
 unsigned char oldToggle = 0;
 
 boolean larmFlag = false;
@@ -38,22 +46,21 @@ void
 switchInterrupt()
 {
   switchFlag = true;
-  
+
   if (digitalRead(INTERRUPT_PIN)) {
     switchStatus = true;
   }
   else {
-    switchStatus = false;    
+    switchStatus = false;
     
-    if (!powerOn) {
-      return;
+    if (powerOn == true) {
+      larmFlag = 1;
+      larmTime = millis();
+      larmTimeout = (maxTime * TIMEOUT_STEPS);
+      relay_status = true;
+      red_led_status = true;
+      flashRedLED = false;      // Endast efter timeout
     }
-    larmFlag = 1;
-    larmTime = millis();
-    larmTimeout = (maxTime * TIMEOUT_STEPS);
-    digitalWrite(RELAY_PIN, HIGH);
-    digitalWrite(RED_LED_PIN, LOW);
-    flashRedLED = false;            // Endast efter timeout
   }
 }
 
@@ -64,22 +71,28 @@ setup()
   larmFlag = 0;
   larmTime = 0;
   maxTime = EEPROM.read(maxTimeAdrEEPROM);
-  
+
   if (maxTime < 0 || maxTime > 9) {
     maxTime = 2;
     EEPROM.write(maxTimeAdrEEPROM, maxTime);      // Write default value
   }
-  
+
   Serial.begin(115200);
   pinMode(INTERRUPT_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), switchInterrupt, FALLING);
+
   pinMode(GREEN_LED_PIN, OUTPUT);
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
+  pinMode(INTERNAL_LED_PIN, OUTPUT);
+
   digitalWrite(GREEN_LED_PIN, HIGH);
   digitalWrite(RED_LED_PIN, HIGH);
+  digitalWrite(RELAY_PIN, LOW);
+
+  flashRedLED = false;
+  red_led_status = false;
   Serial.println("ATOK");
-  
 }
 
 //**********************************************************
@@ -88,12 +101,16 @@ visaMaxtime()
 {
   int i;
   int numberOfFlashes = maxTime;
+  Serial.print("powerOn="); Serial.println(powerOn);
+  Serial.print("larmFlag="); Serial.println(larmFlag);
   Serial.print("maxtime="); Serial.println(maxTime);
+  Serial.print("flashRedLED="); Serial.println(flashRedLED);
+  Serial.print("red_led_status="); Serial.println(red_led_status);
   delay(2000);
   if (maxTime == 0) {
     numberOfFlashes = 10;
   }
-  for (i=0; i<numberOfFlashes; i++) {
+  for (i = 0; i < numberOfFlashes; i++) {
     delay(200);
     digitalWrite(GREEN_LED_PIN, LOW);
     delay(200);
@@ -106,15 +123,17 @@ visaMaxtime()
 void
 flashGreenLED()
 {
+  int v = digitalRead(GREEN_LED_PIN);
+
   digitalWrite(GREEN_LED_PIN, HIGH);
-  delay(300);
-  digitalWrite(GREEN_LED_PIN, LOW);  
-  delay(200);
+  delay(100);
+  digitalWrite(GREEN_LED_PIN, LOW);
+  delay(100);
   digitalWrite(GREEN_LED_PIN, HIGH);
-  delay(200);
-  digitalWrite(GREEN_LED_PIN, LOW);  
-  delay(200);
-  digitalWrite(GREEN_LED_PIN, HIGH);
+  delay(100);
+  digitalWrite(GREEN_LED_PIN, LOW);
+  delay(100);
+  digitalWrite(GREEN_LED_PIN, v);
 }
 
 //**********************************************************
@@ -131,7 +150,7 @@ handleRemoteController()
     Serial.print(" ot: "); Serial.print(oldToggle);
     Serial.print(" t: "); Serial.println(toggle);
     flashGreenLED();
-    
+
     if (toggle != oldToggle) {
       switch ((int) command) {
         case 0:
@@ -147,7 +166,7 @@ handleRemoteController()
           maxTime = command;
           EEPROM.write(maxTimeAdrEEPROM, maxTime);
           break;
-      
+
         case 15:
           flashGreenLED();
           visaMaxtime();
@@ -156,15 +175,20 @@ handleRemoteController()
         case 12:
           if (powerOn) {
             powerOn = false;
+            green_led_status = false;
             Serial.println("OFF");
           }
           else {
             powerOn = true;
+            green_led_status = true;
             Serial.println("ON");
-            if (digitalRead(INTERRUPT_PIN)) {
+
+            if (!digitalRead(INTERRUPT_PIN)) {
+              red_led_status = true;
               flashRedLED = true;
             }
           }
+          break;
       }
     }
     oldToggle = toggle;
@@ -175,29 +199,40 @@ handleRemoteController()
 void
 handleSecondAction()
 {
-  if (powerOn) {
-    digitalWrite(GREEN_LED_PIN, LOW);
+  if (powerOn == true) {
+    if (larmFlag == true) {
+      Serial.println(larmTimeout);
+      if (larmTimeout > 0L) {
+        larmTimeout--;
+        if (larmTimeout == 0L) {
+          relay_status = false;
+          red_led_status = true;
+          flashRedLED = true;
+          larmFlag = false;
+        }
+      }
+    }
+    green_led_status = true;
   }
   else {
-    digitalWrite(GREEN_LED_PIN, HIGH);
+    green_led_status = false;
   }
-  if (flashRedLED) {
-    if (digitalRead(RED_LED_PIN)) {
-      digitalWrite(RED_LED_PIN, LOW);  
+  
+  if (red_led_status == true) {
+    if (flashRedLED == true) {
+      if (oldSecond & 1) {
+        digitalWrite(RED_LED_PIN, LOW);
+      }
+      else {
+        digitalWrite(RED_LED_PIN, HIGH);
+      }
     }
     else {
-      digitalWrite(RED_LED_PIN, HIGH);
+       digitalWrite(RED_LED_PIN, LOW);
     }
   }
-
-  if (switchFlag == true) {
-    if (switchStatus == true) {
-      Serial.println("Switch HIGH");
-    }
-    else {
-      Serial.println("Switch LOW");
-    }
-    switchFlag = false;
+  else {
+    digitalWrite(RED_LED_PIN, HIGH);
   }
 }
 
@@ -206,41 +241,33 @@ void
 loop()
 {
   unsigned long triggTime;
-  
+
   handleRemoteController();
 
-  currentTime = millis();
-
-  if (currentTime < oldCurrentTime) {   //## Timer overflow
-    oldCurrentTime = 0;
+  if (digitalRead(INTERRUPT_PIN)) {
+    digitalWrite(INTERNAL_LED_PIN, HIGH);
   }
-  if ((currentTime - oldCurrentTime) > 1000) {
+  else {
+    digitalWrite(INTERNAL_LED_PIN, LOW);
+  }
+  Second = second();
+  
+  if (Second != oldSecond) {
     handleSecondAction();
-    
-    if (larmFlag && powerOn) {
-      if (larmTimeout > 0) {
-        larmTimeout--;
-      
-        if (larmTimeout == 0) {
-          digitalWrite(RELAY_PIN, LOW);
-          digitalWrite(RED_LED_PIN, HIGH);
-          flashRedLED = true;
-          larmFlag = false;
-        }
-      }
-      else {
-        digitalWrite(RED_LED_PIN, HIGH);
-        flashRedLED = true;
-      }
-    }
+    oldSecond = Second;
   }
-  if (!powerOn) {
-    digitalWrite(RELAY_PIN, LOW);
-    digitalWrite(RED_LED_PIN, HIGH);
+  if (green_led_status == true) {
+    digitalWrite(GREEN_LED_PIN, LOW);
+  }
+  else {
     digitalWrite(GREEN_LED_PIN, HIGH);
-    larmTime = 0L;
-    larmFlag = false;
   }
-  oldCurrentTime = currentTime;
+  if (relay_status == true) {
+    digitalWrite(RELAY_PIN, HIGH);
+  }
+  else {
+    digitalWrite(RELAY_PIN, LOW);
+  }
 }
+
 
