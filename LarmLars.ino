@@ -1,12 +1,22 @@
 /****************************************************************************
  * Project : LarmLars
  * Date : 2016-11-19
+ * 
+ * 
+ * ---- LED ---- 
+ * Green:
+ *     Off = (power off), On = (power on, switch armed), flashing = (power on, switch active) 
+ *     
+ * Eed:
+ *     Off = (Alarm not active), On = (Alarm active), Flashing = (Alarm has timedout)
+ * 
  */
 
 #include <TimeLib.h>
 #include <EEPROM.h>
 #include <limits.h>
 #include <RC5.h>
+#include "led.h"
 
 using namespace std;
 
@@ -22,9 +32,9 @@ int INTERNAL_LED_PIN = 13;
 
 RC5 rc5(5);
 
-int maxTime = 1;					// Ställer in Larmtimeout * TIMEOuT_STEPS i antal sekunder
-int EEPROM_AdrMaxTime = 0;          // Adress i EEPROM där "maxTime" lagras
-int EEPROM_AdrPowerOnStatus = 2;    // Adress i EEPROM där flagga som sätter auto power vid boot
+int maxTime = 1;					// Stï¿½ller in Larmtimeout * TIMEOuT_STEPS i antal sekunder
+int EEPROM_AdrMaxTime = 0;          // Adress i EEPROM dï¿½r "maxTime" lagras
+int EEPROM_AdrPowerOnStatus = 2;    // Adress i EEPROM dï¿½r flagga som sï¿½tter auto power vid boot
 
 //#####  Status flags
 boolean FlagPowerOn = false;
@@ -39,13 +49,15 @@ boolean FlagLarm = false;
 
 int Second = 0;
 int oldSecond = 0;
-unsigned char oldToggle = 0;		// Används vid fjärrkontroll avläsning
+unsigned char oldToggle = 0;		// Anvï¿½nds vid fjï¿½rrkontroll avlï¿½sning
 
-unsigned long TimeLarm = 0;         // avläsning av millis() vid larm
-unsigned long TimeLarmTimeout = 0;  // Hur lång tid reläet skall vara aktiverat vid larm
+unsigned long TimeLarm = 0;         // avlï¿½sning av millis() vid larm
+unsigned long TimeLarmTimeout = 0;  // Hur lï¿½ng tid relï¿½et skall vara aktiverat vid larm
 
+LED greenLED(GREEN_LED_PIN);
+LED redLED(RED_LED_PIN);
 
-//**********************************************************
+//**********************************************************************************
 void
 switchInterrupt()
 {
@@ -57,13 +69,12 @@ switchInterrupt()
 			TimeLarm = millis();
 			TimeLarmTimeout = (maxTime * TIMEOUT_STEPS);
 			FlagRelay = true;
-			FlagRedLed = true;
-			FlagFlashRedLED = false;      // Endast efter timeout
+      redLED.setMode(ON);
 		}
 	}
 }
 
-//**********************************************************
+//**********************************************************************************
 void
 setup()
 {
@@ -82,26 +93,22 @@ setup()
 	pinMode(INTERRUPT_PIN, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), switchInterrupt, FALLING);
 
-	pinMode(GREEN_LED_PIN, OUTPUT);
-	pinMode(RED_LED_PIN, OUTPUT);
 	pinMode(RELAY_PIN, OUTPUT);
 	pinMode(INTERNAL_LED_PIN, OUTPUT);
-
-	digitalWrite(GREEN_LED_PIN, HIGH);
-	digitalWrite(RED_LED_PIN, HIGH);
 	digitalWrite(RELAY_PIN, LOW);
 
-	FlagFlashRedLED = false;
 	FlagRedLed = false;
 	Serial.println("ATOK");
 }
 
-//**********************************************************
+//**********************************************************************************
 void
 showInformation()
 {
 	int i;
 	int numberOfFlashes = maxTime;
+  int tmp = greenLED.getMode();
+  
 	Serial.print("FlagPowerOn="); Serial.println(FlagPowerOn);
 	Serial.print("EEPROM FlagPowerOn="); Serial.println(EEPROM.read(EEPROM_AdrPowerOnStatus));
 	Serial.print("FlagLarm="); Serial.println(FlagLarm);
@@ -115,49 +122,51 @@ showInformation()
 	}
 	for (i = 0; i < numberOfFlashes; i++) {
 		delay(200);
-		digitalWrite(GREEN_LED_PIN, LOW);
+    greenLED.setMode(ON);
 		delay(200);
-		digitalWrite(GREEN_LED_PIN, HIGH);
+    greenLED.setMode(OFF);
 	}
 	delay(2000);
+  greenLED.setMode(tmp);
 }
 
-//**********************************************************
+//**********************************************************************************
 void
 flashGreenLED(int n)
 {
-	int v = digitalRead(GREEN_LED_PIN);
+	int tmp = greenLED.getMode();
 
-	digitalWrite(GREEN_LED_PIN, HIGH);
+  greenLED.setMode(OFF);
 	delay(200);
 
 	for (int i=0; i<n; i++) {
-		digitalWrite(GREEN_LED_PIN, LOW);
+    greenLED.setMode(ON);
 		delay(100);
-		digitalWrite(GREEN_LED_PIN, HIGH);
+    greenLED.setMode(OFF);
 		delay(100);
 	}
-	digitalWrite(GREEN_LED_PIN, v);
+  greenLED.setMode(tmp);
 }
 
-//**********************************************************
+//**********************************************************************************
 void
 flashRedLED(int n)
 {
-	int v = digitalRead(RED_LED_PIN);
+	int tmp = redLED.getMode();
 
-	digitalWrite(RED_LED_PIN, HIGH);
+	redLED.setMode(OFF);
 	delay(200);
 	
 	for (int i=0; i<n; i++) {
-		digitalWrite(RED_LED_PIN, LOW);
+    redLED.setMode(ON);
 		delay(100);
-		digitalWrite(RED_LED_PIN, HIGH);
+    redLED.setMode(OFF);
 		delay(100);
 	}	
-	digitalWrite(RED_LED_PIN, v);
+  redLED.setMode(tmp);
 }
-//**********************************************************
+
+//**********************************************************************************
 void
 handleRemoteController()
 {
@@ -175,7 +184,7 @@ handleRemoteController()
 			switch ((int) command) {
 				case 0:
 				case 1:
-		        case 2:
+		    case 2:
 				case 3:
 				case 4:
 				case 5:
@@ -201,8 +210,7 @@ handleRemoteController()
 						Serial.println("ON");
 
 						if (!digitalRead(INTERRUPT_PIN)) {
-							FlagRedLed = true;
-							FlagFlashRedLED = true;
+							 redLED.setMode(FLASH);
 						}
 					}
 					break;
@@ -229,7 +237,7 @@ handleRemoteController()
 	}
 }
 
-//**********************************************************
+//**********************************************************************************
 void
 handleSecondChangeAction()
 {
@@ -242,9 +250,8 @@ handleSecondChangeAction()
 					TimeLarmTimeout--;
 			
 					if (TimeLarmTimeout == 0L) {
-						FlagRelay = false;			// Tid att stänga av larm signalen
-						FlagRedLed = true;
-						FlagFlashRedLED = true;
+            redLED.setMode(FLASH);
+						FlagRelay = false;		        	// Tid att stÃ¤nga av larm signalen
 						FlagLarm = false;	
 					}
 				}
@@ -253,24 +260,7 @@ handleSecondChangeAction()
 		FlagGreenLed = true;
 	}
 	else {
-		FlagGreenLed = false;
-	}
-  
-	if (FlagFlashRedLED == true) {
-		if (oldSecond & 1) {
-			digitalWrite(RED_LED_PIN, LOW);
-		}
-		 else {
-			digitalWrite(RED_LED_PIN, HIGH);
-		}
-	}
-	else {
-		if (FlagRedLed == true) {
-			digitalWrite(RED_LED_PIN, HIGH);
-		}
-		else {
-			digitalWrite(RED_LED_PIN, LOW);
-		}
+    greenLED.setMode(OFF);
 	}
 }
 
@@ -280,24 +270,22 @@ loop()
 {
 	handleRemoteController();
 
-	if (digitalRead(INTERRUPT_PIN)) {			// Används vid installations test
+  if (FlagPowerOn) {
+    if (greenLED.getMode() != FLASH) {
+      greenLED.setMode(ON);
+    }
+  }
+	if (digitalRead(INTERRUPT_PIN)) {			// AnvÃ¤nds vid installations test
 		digitalWrite(INTERNAL_LED_PIN, HIGH);
 	}
 	else {
 		digitalWrite(INTERNAL_LED_PIN, LOW);
 	}
-  
 	Second = second();
   
 	if (Second != oldSecond) {
 		handleSecondChangeAction();
 		oldSecond = Second;
-	}
-	if (FlagGreenLed == true) {
-		digitalWrite(GREEN_LED_PIN, LOW);
-	}
-	else {
-		digitalWrite(GREEN_LED_PIN, HIGH);
 	}
 	if (FlagRelay == true) {
 		digitalWrite(RELAY_PIN, HIGH);
@@ -305,4 +293,7 @@ loop()
 	else {
 		digitalWrite(RELAY_PIN, LOW);
 	}
+  greenLED.loop();
+  redLED.loop();
 }
+
