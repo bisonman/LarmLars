@@ -32,7 +32,7 @@ int INTERNAL_LED_PIN = 13;
 
 RC5 rc5(5);
 
-int maxTime = 1;					// St�ller in Larmtimeout * TIMEOuT_STEPS i antal sekunder
+int maxTime = 10;					          // Ställer in Larmtimeout * TIMEOuT_STEPS i antal sekunder
 int EEPROM_AdrMaxTime = 0;          // Adress i EEPROM d�r "maxTime" lagras
 int EEPROM_AdrPowerOnStatus = 2;    // Adress i EEPROM d�r flagga som s�tter auto power vid boot
 
@@ -49,9 +49,9 @@ boolean FlagLarm = false;
 
 int Second = 0;
 int oldSecond = 0;
-unsigned char oldToggle = 0;		// Anv�nds vid fj�rrkontroll avl�sning
+unsigned char oldToggle = 0;		// Används vid fjärrkontroll avläsning
 
-unsigned long TimeLarm = 0;         // avl�sning av millis() vid larm
+unsigned long TimeLarm = 0;         // avläsning av millis() vid larm
 unsigned long TimeLarmTimeout = 0;  // Hur l�ng tid rel�et skall vara aktiverat vid larm
 
 LED greenLED(GREEN_LED_PIN);
@@ -76,6 +76,26 @@ switchInterrupt()
 
 //**********************************************************************************
 void
+flashGreenLed(int n)
+{
+  int oldMode = greenLED.getMode();
+  Serial.print(n);   Serial.println(", T1");
+  greenLED.setMode(OFF);
+  delay(1000);
+  while (n > 0) {
+    greenLED.setAction(ON);
+    delay(1000);
+    greenLED.setAction(OFF);
+    delay(1000);
+    n--;
+    Serial.println("T2");
+  }
+  greenLED.setMode(oldMode);
+  Serial.println("T3");
+}
+
+//**********************************************************************************
+void
 setup()
 {
 	FlagLarm = 0;
@@ -96,8 +116,14 @@ setup()
 	pinMode(RELAY_PIN, OUTPUT);
 	pinMode(INTERNAL_LED_PIN, OUTPUT);
 	digitalWrite(RELAY_PIN, LOW);
-
 	FlagRedLed = false;
+ 
+  if (digitalRead(INTERRUPT_PIN) == LOW) {
+    greenLED.setMode(FLASH);
+  }
+  else {
+     greenLED.setMode(ON);
+  }
 	Serial.println("ATOK");
 }
 
@@ -107,63 +133,20 @@ showInformation()
 {
 	int i;
 	int numberOfFlashes = maxTime;
-  int tmp = greenLED.getMode();
-  
+
 	Serial.print("FlagPowerOn="); Serial.println(FlagPowerOn);
-	Serial.print("EEPROM FlagPowerOn="); Serial.println(EEPROM.read(EEPROM_AdrPowerOnStatus));
+	//Serial.print("EEPROM FlagPowerOn="); Serial.println(EEPROM.read(EEPROM_AdrPowerOnStatus));
 	Serial.print("FlagLarm="); Serial.println(FlagLarm);
 	Serial.print("maxtime="); Serial.println(maxTime);
 	Serial.print("FlagFlashRedLED="); Serial.println(FlagFlashRedLED);
 	Serial.print("FlagRedLed="); Serial.println(FlagRedLed);
-	delay(2000);
   
 	if (maxTime == 0) {
 		numberOfFlashes = 10;
 	}
-	for (i = 0; i < numberOfFlashes; i++) {
-		delay(200);
-    greenLED.setMode(ON);
-		delay(200);
-    greenLED.setMode(OFF);
-	}
-	delay(2000);
-  greenLED.setMode(tmp);
-}
-
-//**********************************************************************************
-void
-flashGreenLED(int n)
-{
-	int tmp = greenLED.getMode();
-
-  greenLED.setMode(OFF);
-	delay(200);
-
-	for (int i=0; i<n; i++) {
-    greenLED.setMode(ON);
-		delay(100);
-    greenLED.setMode(OFF);
-		delay(100);
-	}
-  greenLED.setMode(tmp);
-}
-
-//**********************************************************************************
-void
-flashRedLED(int n)
-{
-	int tmp = redLED.getMode();
-
-	redLED.setMode(OFF);
-	delay(200);
-	
-	for (int i=0; i<n; i++) {
-    redLED.setMode(ON);
-		delay(100);
-    redLED.setMode(OFF);
-		delay(100);
-	}	
-  redLED.setMode(tmp);
+  flashGreenLed(numberOfFlashes);
+  //greenLED.flashCount(numberOfFlashes);
+  Serial.print("GreenMode="); Serial.println(greenLED.getMode());
 }
 
 //**********************************************************************************
@@ -176,8 +159,8 @@ handleRemoteController()
 
 	if (rc5.read(&toggle, &address, &command)) {
 		Serial.print("a: "); Serial.print(address);
-		Serial.print(" c: "); Serial.print(command);
-		Serial.print(" t: "); Serial.println(toggle);
+		Serial.print(", c: "); Serial.print(command);
+		Serial.print(", t: "); Serial.println(toggle);
 
 		if (toggle != oldToggle) {
 			
@@ -192,13 +175,15 @@ handleRemoteController()
 				case 7:
 				case 8:
 				case 9:
-					flashGreenLED(2);
+          Serial.println("Write eeprom");
+          greenLED.flashCount(2);
 					maxTime = command;
 					EEPROM.write(EEPROM_AdrMaxTime, maxTime);
 					break;
 
 				case 12:
-					flashGreenLED(3);
+          greenLED.flashCount(3);
+					
 					if (FlagPowerOn) {
 						FlagPowerOn = false;
 						FlagGreenLed = false;
@@ -216,19 +201,20 @@ handleRemoteController()
 					break;
 
 				case 15:
-					flashGreenLED(4);
+        case 18:
+          greenLED.flashCount(4);
 					showInformation();
 					break;
 			
 				case 43:
-					flashGreenLED(5);
+					greenLED.flashCount(5);
 					if (EEPROM.read(EEPROM_AdrPowerOnStatus)) {
 						EEPROM.write(EEPROM_AdrPowerOnStatus, 0);
-						flashRedLED(2);
+						redLED.flashCount(2);
 					}
 					else {
 						EEPROM.write(EEPROM_AdrPowerOnStatus, 1);
-						flashRedLED(2);
+            redLED.flashCount(2);
 					}
 					break;
 			}
@@ -276,6 +262,7 @@ loop()
     }
   }
 	if (digitalRead(INTERRUPT_PIN)) {			// Används vid installations test
+    greenLED.setMode(ON);
 		digitalWrite(INTERNAL_LED_PIN, HIGH);
 	}
 	else {
@@ -285,6 +272,8 @@ loop()
   
 	if (Second != oldSecond) {
 		handleSecondChangeAction();
+    greenLED.loop();
+    redLED.loop();
 		oldSecond = Second;
 	}
 	if (FlagRelay == true) {
@@ -293,7 +282,5 @@ loop()
 	else {
 		digitalWrite(RELAY_PIN, LOW);
 	}
-  greenLED.loop();
-  redLED.loop();
 }
 

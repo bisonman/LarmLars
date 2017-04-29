@@ -7,9 +7,10 @@
 #include <TimeLib.h>
 
 
-#define OFF   0
-#define ON    1
-#define FLASH 2
+#define OFF          0
+#define ON           1
+#define FLASH        2
+#define FLASH_COUNT  3
 
 //************************************************************
 //************************************************************
@@ -24,9 +25,18 @@ class LED {
 		}
 		~LED(){};
 
+    //********************************************************
+    void setAction(int mode);
+
 		//********************************************************
 		int setMode(int mode);
 
+    //********************************************************
+    int setMode(int mode, int cnt);
+
+    //********************************************************
+    void flashCount(int cnt);
+    
 		//********************************************************
 		int getMode();
 		
@@ -36,7 +46,8 @@ class LED {
 	//********************************************************
 	private:
 		int ledMode;
+    int oldLedMode;
 		int ledPIN;
 		int oldSekund;
-
+    int count;
 };
