@@ -2,6 +2,7 @@
  * Project : LarmLars
  * Date : 2016-11-19
  * 
+ * Arduino Mini Pro 16MHz
  * 
  * ---- LED ---- 
  * Green:
@@ -39,7 +40,6 @@ int EEPROM_AdrPowerOnStatus = 2;    // Adress i EEPROM d�r flagga som s�tter
 //#####  Status flags
 boolean FlagPowerOn = false;
 boolean FlagFlashRedLED = false;
-boolean FlagSwitch = false;
 //## boolean switchStatus = false;
 boolean FlagGreenLed = false;
 boolean FlagRedLed = false;
@@ -61,9 +61,7 @@ LED redLED(RED_LED_PIN);
 void
 switchInterrupt()
 {
-	FlagSwitch = true;
-  
-	if (digitalRead(INTERRUPT_PIN) == 0) {
+	if (digitalRead(INTERRUPT_PIN) == HIGH) {
 		if (FlagPowerOn == true) {
 			FlagLarm = 1;
 			TimeLarm = millis();
@@ -72,6 +70,9 @@ switchInterrupt()
       redLED.setMode(ON);
 		}
 	}
+  else {
+    
+  }
 }
 
 //**********************************************************************************
@@ -111,7 +112,7 @@ setup()
   
 	Serial.begin(115200);
 	pinMode(INTERRUPT_PIN, INPUT_PULLUP);
-	attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), switchInterrupt, FALLING);
+	attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), switchInterrupt, CHANGE);
 
 	pinMode(RELAY_PIN, OUTPUT);
 	pinMode(INTERNAL_LED_PIN, OUTPUT);
