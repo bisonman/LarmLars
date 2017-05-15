@@ -45,6 +45,7 @@ boolean FlagGreenLed = false;
 boolean FlagRedLed = false;
 boolean FlagRelay = false;
 boolean FlagLarm = false;
+boolean StartSensorError = false;
 //## boolean FlagTimeOverflow = false;
 
 int Second = 0;
@@ -76,6 +77,18 @@ switchInterrupt()
 }
 
 //**********************************************************************************
+boolean
+getSwitchStatus()
+{
+  if (digitalRead(INTERRUPT_PIN) == HIGH) {
+    return true;
+  }
+  else {
+    return false;
+  }
+}
+
+//**********************************************************************************
 void
 flashGreenLed(int n)
 {
@@ -83,6 +96,7 @@ flashGreenLed(int n)
   Serial.print(n);   Serial.println(", T1");
   greenLED.setMode(OFF);
   delay(1000);
+  
   while (n > 0) {
     greenLED.setAction(ON);
     delay(1000);
@@ -119,11 +133,12 @@ setup()
 	digitalWrite(RELAY_PIN, LOW);
 	FlagRedLed = false;
  
-  if (digitalRead(INTERRUPT_PIN) == LOW) {
+  if (getSwitchStatus()) {
+    StartSensorError = true;
     greenLED.setMode(FLASH);
   }
   else {
-     greenLED.setMode(ON);
+    greenLED.setMode(ON);
   }
 	Serial.println("ATOK");
 }
@@ -195,7 +210,7 @@ handleRemoteController()
 						FlagGreenLed = true;
 						Serial.println("ON");
 
-						if (!digitalRead(INTERRUPT_PIN)) {
+						if (!getSwitchStatus()) {
 							 redLED.setMode(FLASH);
 						}
 					}
@@ -258,12 +273,14 @@ loop()
 	handleRemoteController();
 
   if (FlagPowerOn) {
-    if (greenLED.getMode() != FLASH) {
-      greenLED.setMode(ON);
+    if (StartSensorError) {
+      if (!getSwitchStatus()) {
+        StartSensorError = false;
+        greenLED.setMode(ON);
+      }
     }
   }
-	if (digitalRead(INTERRUPT_PIN)) {			// Används vid installations test
-    greenLED.setMode(ON);
+	if (getSwitchStatus()) {			// Används vid installations test
 		digitalWrite(INTERNAL_LED_PIN, HIGH);
 	}
 	else {
